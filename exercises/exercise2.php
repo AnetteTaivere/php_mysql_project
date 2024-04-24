@@ -1,6 +1,6 @@
 <?php
 
-// Database connection parameters
+// Database connection 
 $servername = "127.0.0.1:3306";
 $username = "mysql"; 
 $password = "lihtne123"; // Change this to your database password
@@ -11,17 +11,12 @@ try {
     $conn = mysqli_connect($servername, $username, $password, $dbname);
     echo "Connected successfully\n";
 
-
-
-    // Display patient information with insurance details
     $sql = "SELECT p.pn, p.last, p.first, i.iname, DATE_FORMAT(i.from_date, '%m-%d-%y') AS from_date, DATE_FORMAT(i.to_date, '%m-%d-%y') AS to_date
             FROM patient p
             JOIN insurance i ON p._id = i.patient_id
             ORDER BY i.from_date, p.last";
     
-    
     $result = $conn->query($sql);
-    
     
     if ($result->num_rows > 0) {
         while($row = $result->fetch_assoc()) {
@@ -31,52 +26,73 @@ try {
         echo "0 results";
     }
     
-    
     // Statistics about letter occurrences in names
-    $sql = "SELECT CONCAT(UPPER(LEFT(p.first, 1)), ' ', COUNT(1), ' ', ROUND((COUNT(1) / t.total * 100), 2), '%') AS stats
-            FROM patient p
-            JOIN (
-                SELECT LEFT(first, 1) AS first_letter, COUNT(*) AS total
-                FROM patient
-                GROUP BY LEFT(first, 1)
-            ) AS t ON LEFT(p.first, 1) = t.first_letter
-            GROUP BY LEFT(p.first, 1), p.first, t.total
-            UNION
-            SELECT CONCAT(UPPER(LEFT(p.last, 1)), ' ', COUNT(1), ' ', ROUND((COUNT(1) / t.total * 100), 2), '%') AS stats
-            FROM patient p
-            JOIN (
-                SELECT LEFT(last, 1) AS last_letter, COUNT(*) AS total
-                FROM patient
-                GROUP BY LEFT(last, 1)
-            ) AS t ON LEFT(p.last, 1) = t.last_letter
-            GROUP BY LEFT(p.last, 1), p.last, t.total
-            ORDER BY LEFT(stats, 1)";
+    $sql = "SELECT 
+        SUBSTRING_INDEX(SUBSTRING_INDEX(name, ' ', 1), ' ', -1) AS first_name,
+        SUBSTRING_INDEX(SUBSTRING_INDEX(name, ' ', -1), ' ', 1) AS last_name
+    FROM
+        (SELECT 
+            CONCAT(first, ' ', last) AS name
+        FROM
+            patient) AS name_split
+    UNION ALL SELECT 
+        SUBSTRING_INDEX(SUBSTRING_INDEX(name, ' ', 1), ' ', -1) AS first_name,
+        SUBSTRING_INDEX(SUBSTRING_INDEX(name, ' ', -1), ' ', 1) AS last_name
+    FROM
+        (SELECT 
+            CONCAT(first, ' ', last) AS name
+        FROM
+            patient) AS name_split;
+      ";
 
-
-    
     $result = $conn->query($sql);
-    
-    
+
     if ($result->num_rows > 0) {
+        $letterCounts = [];
+        // Count letters in names
         while($row = $result->fetch_assoc()) {
-            echo $row["stats"] . "\n";
+            $first_name = $row["first_name"];
+            $last_name = $row["last_name"];
+            $full_name = $first_name . " " . $last_name;
+
+            // Count letter occurrences
+            $letters = str_split($full_name);
+            foreach ($letters as $letter) {
+                if (ctype_alpha($letter)) {
+                    $letter = strtolower($letter);
+                    if (!isset($letterCounts[$letter])) {
+                        $letterCounts[$letter] = 1;
+                    } else {
+                        $letterCounts[$letter]++;
+                    }
+                }
+            }
         }
-    } 
+
+        // Calculate total letters
+        $totalLetters = array_sum($letterCounts);
+
+        // Calculate percentages and sort alphabetically
+        ksort($letterCounts);
+        echo "\nLetter Statistics:\n";
+        echo "Letter\tCount\tPercentage\n";
+        foreach ($letterCounts as $letter => $count) {
+            $percentage = number_format(($count / $totalLetters) * 100, 2);
+            echo strtoupper($letter) . "\t" . $count . "\t" . $percentage . " %\n";
+        }
+    }
     else {
         echo "0 results";
     }
-    
-    
+
     $conn->close();
-   
+
 } 
 catch(PDOException $e) {
-    // Handle errors
     echo "Connection failed: " . $e->getMessage();
 }
 
 
 // Close the connection
 $conn = null;
-
 ?>
